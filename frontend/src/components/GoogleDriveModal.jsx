@@ -50,6 +50,11 @@ export default function GoogleDriveModal({
                 <CheckCircle2 size={20} className="status-icon" />
                 <div>
                   <strong>Connected to Google Drive</strong>
+                  {driveStatus.userEmail && (
+                    <div className="connected-user-pill">
+                      <span>Account: <strong>{driveStatus.userEmail}</strong></span>
+                    </div>
+                  )}
                   <p>Reports will automatically save to your "Accomplishment Reports" folder.</p>
                 </div>
               </>

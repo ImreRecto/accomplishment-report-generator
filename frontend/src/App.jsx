@@ -26,6 +26,13 @@ import GoogleDriveModal from './components/GoogleDriveModal.jsx';
 import CopyTextModal from './components/CopyTextModal.jsx';
 import Toast from './components/Toast.jsx';
 import { generateDocxBlob, getReportFileName, triggerFileDownload } from './lib/docxGenerator.js';
+import {
+  getStoredAuth,
+  clearStoredAuth,
+  requestGoogleAccessToken,
+  uploadDocxBlobToDrive,
+  isGoogleDriveConfigured
+} from './lib/googleDriveClient.js';
 import './App.css';
 
 const SAMPLE_ENTRIES = [
@@ -205,17 +212,45 @@ export default function App() {
     triggerAutoSaveBadge();
   }, [notedBy]);
 
-  // Check Drive Status
+  // Check Drive Status (checks both client-side GIS token and optional backend)
   const fetchDriveStatus = useCallback(async () => {
+    // 1. Check local client-side token (Google Identity Services)
+    const stored = getStoredAuth();
+    if (stored.authenticated && stored.token) {
+      setDriveStatus({
+        configured: true,
+        authenticated: true,
+        folderName: 'Accomplishment Reports',
+        userEmail: stored.user?.email || null,
+        mode: 'client'
+      });
+      return;
+    }
+
+    const clientConfigured = isGoogleDriveConfigured();
+
+    // 2. Check if backend server has session tokens
     try {
       const res = await fetch('/api/auth/status');
       if (res.ok) {
         const data = await res.json();
-        setDriveStatus(data);
+        setDriveStatus({
+          ...data,
+          configured: data.configured || clientConfigured,
+          mode: 'server'
+        });
+        return;
       }
     } catch (err) {
-      console.warn('Backend not yet reachable:', err);
+      // Backend not running (e.g. static host like Vercel)
     }
+
+    // Default status
+    setDriveStatus({
+      configured: clientConfigured,
+      authenticated: false,
+      folderName: 'Accomplishment Reports'
+    });
   }, []);
 
   useEffect(() => {
@@ -304,7 +339,7 @@ export default function App() {
     }
   };
 
-  // Save to Google Drive
+  // Save to Google Drive (Resilient: Client-Side direct upload + Backend fallback)
   const handleSaveToDrive = async () => {
     if (!driveStatus.authenticated) {
       setShowDriveModal(true);
@@ -312,14 +347,31 @@ export default function App() {
     }
 
     setIsSavingToDrive(true);
-    try {
-      const payload = {
-        employeeName,
-        periodLabel,
-        entries,
-        notedBy
-      };
+    const payload = {
+      employeeName,
+      periodLabel,
+      entries,
+      notedBy
+    };
+    const filename = getReportFileName(payload);
 
+    try {
+      const stored = getStoredAuth();
+      if (stored.authenticated && stored.token) {
+        // 1. Direct in-browser upload to logged-in user's Google Drive (works on Vercel/Netlify/local)
+        const blob = await generateDocxBlob(payload);
+        const driveData = await uploadDocxBlobToDrive(blob, filename, stored.token);
+
+        setToast({
+          type: 'success',
+          message: `Saved to Google Drive folder "Accomplishment Reports"!`,
+          link: driveData.webViewLink,
+          linkText: 'Open in Google Drive'
+        });
+        return;
+      }
+
+      // 2. Fallback: Backend server upload
       const res = await fetch('/api/save-to-drive', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -343,22 +395,66 @@ export default function App() {
       });
     } catch (err) {
       console.error('Drive save error:', err);
+      // If authorization expired, prompt to reconnect
+      if (err.message && (err.message.includes('expired') || err.message.includes('401'))) {
+        fetchDriveStatus();
+        setShowDriveModal(true);
+      }
       setToast({
         type: 'error',
-        message: err.message
+        message: err.message || 'Failed to upload to Google Drive'
       });
     } finally {
       setIsSavingToDrive(false);
     }
   };
 
-  const handleLoginGoogle = () => {
-    window.location.href = '/api/auth/google';
+  const handleLoginGoogle = async () => {
+    try {
+      setIsSavingToDrive(true);
+      const auth = await requestGoogleAccessToken();
+      setDriveStatus({
+        configured: true,
+        authenticated: true,
+        folderName: 'Accomplishment Reports',
+        userEmail: auth.user?.email || null,
+        mode: 'client'
+      });
+      setShowDriveModal(false);
+      setToast({
+        type: 'success',
+        message: auth.user?.email 
+          ? `Connected to Google Drive as ${auth.user.email}!` 
+          : 'Successfully connected to Google Drive!'
+      });
+    } catch (err) {
+      console.warn('In-browser Google popup encountered an issue, trying backend redirect:', err);
+      if (err.message && err.message.includes('popup_closed_by_user')) {
+        // User voluntarily dismissed popup
+        return;
+      }
+      // If client ID invalid or backend exists, try backend redirect
+      try {
+        window.location.href = '/api/auth/google';
+      } catch (redirectErr) {
+        setToast({
+          type: 'error',
+          message: `Google Sign-in failed: ${err.message}`
+        });
+      }
+    } finally {
+      setIsSavingToDrive(false);
+    }
   };
 
   const handleLogoutGoogle = async () => {
     try {
-      await fetch('/api/auth/logout', { method: 'POST' });
+      clearStoredAuth();
+      try {
+        await fetch('/api/auth/logout', { method: 'POST' });
+      } catch (e) {
+        // Server may not be present (static host)
+      }
       fetchDriveStatus();
       setShowDriveModal(false);
       setToast({
