@@ -132,21 +132,21 @@ export default function GoogleDriveModal({
                   <li>
                     Add this Authorized Redirect URI:
                     <div className="code-copy-row">
-                      <code>http://localhost:5000/api/auth/google/callback</code>
+                      <code>{typeof window !== 'undefined' ? `${window.location.origin}/api/auth/google/callback` : 'http://localhost:5000/api/auth/google/callback'}</code>
                       <button
                         type="button"
                         className="copy-btn"
                         onClick={() =>
-                          onCopyText('http://localhost:5000/api/auth/google/callback')
+                          onCopyText(`${window.location.origin}/api/auth/google/callback`)
                         }
+                        title="Copy Redirect URI"
                       >
                         <Copy size={13} />
                       </button>
                     </div>
                   </li>
                   <li>
-                    Paste your <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> in{' '}
-                    <code>backend/.env</code> and restart the server.
+                    Paste your <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> in your hosting Environment Variables (or <code>backend/.env</code> for local dev).
                   </li>
                 </ol>
               </div>
