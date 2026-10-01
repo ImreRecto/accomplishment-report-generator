@@ -47,7 +47,8 @@ app.set('trust proxy', 1);
 // Middleware
 app.use(cors({
   origin: true,
-  credentials: true
+  credentials: true,
+  exposedHeaders: ['Content-Disposition']
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser(process.env.SESSION_SECRET || 'napwc-secret-key-2026'));

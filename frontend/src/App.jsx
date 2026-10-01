@@ -25,6 +25,7 @@ import DocumentPreview from './components/DocumentPreview.jsx';
 import GoogleDriveModal from './components/GoogleDriveModal.jsx';
 import CopyTextModal from './components/CopyTextModal.jsx';
 import Toast from './components/Toast.jsx';
+import { generateDocxBlob, getReportFileName, triggerFileDownload } from './lib/docxGenerator.js';
 import './App.css';
 
 const SAMPLE_ENTRIES = [
@@ -249,55 +250,55 @@ export default function App() {
     });
   };
 
-  // Direct Download .docx
+  // Direct Download .docx (Resilient Architecture: Fast in-browser generator + server fallback)
   const handleDownloadDocx = async () => {
     setIsGenerating(true);
+    const payload = {
+      employeeName,
+      periodLabel,
+      entries,
+      notedBy
+    };
+    const filename = getReportFileName(payload);
+
     try {
-      const payload = {
-        employeeName,
-        periodLabel,
-        entries,
-        notedBy
-      };
-
-      const res = await fetch('/api/generate?download=1', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson.error || 'Failed to generate document');
-      }
-
-      const blob = await res.blob();
-      const contentDisposition = res.headers.get('Content-Disposition');
-      let filename = 'Accomplishment_Report.docx';
-      if (contentDisposition) {
-        const match = contentDisposition.match(/filename="?([^"]+)"?/);
-        if (match && match[1]) filename = match[1];
-      }
-
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      // 1. Primary: Generate directly in client browser (instant, works on Vercel/Netlify/Render, zero cold start)
+      const blob = await generateDocxBlob(payload);
+      triggerFileDownload(blob, filename);
 
       setToast({
         type: 'success',
         message: `Document "${filename}" generated and downloaded!`
       });
-    } catch (err) {
-      console.error('Download error:', err);
-      setToast({
-        type: 'error',
-        message: err.message
-      });
+    } catch (clientErr) {
+      console.warn('In-browser docx generation encountered an issue, trying server API:', clientErr);
+      try {
+        // 2. Fallback: Request generation from backend API
+        const res = await fetch('/api/generate?download=1', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+          const errJson = await res.json().catch(() => ({}));
+          throw new Error(errJson.error || `Server responded with HTTP ${res.status}`);
+        }
+
+        const blob = await res.blob();
+        triggerFileDownload(blob, filename);
+
+        setToast({
+          type: 'success',
+          message: `Document "${filename}" generated and downloaded!`
+        });
+      } catch (serverErr) {
+        console.error('Download error:', serverErr);
+        setToast({
+          type: 'error',
+          message: `Download failed: ${serverErr.message || 'Please check network connection.'}`
+        });
+      }
     } finally {
       setIsGenerating(false);
     }
