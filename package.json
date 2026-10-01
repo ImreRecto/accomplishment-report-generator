@@ -1,0 +1,25 @@
+{
+  "name": "accomplishment-report-generator",
+  "version": "1.0.0",
+  "description": "Standalone web app to fill out NAPWC semi-monthly Accomplishment Report Forms and save the result as a native .docx to Google Drive",
+  "type": "module",
+  "scripts": {
+    "install:all": "npm --prefix backend install && npm --prefix frontend install",
+    "build": "npm --prefix backend install && npm --prefix frontend install && npm --prefix frontend run build",
+    "build:frontend": "npm --prefix frontend run build",
+    "start": "node backend/server.js",
+    "dev:backend": "npm --prefix backend start",
+    "dev:frontend": "npm --prefix frontend dev"
+  },
+  "keywords": [
+    "napwc",
+    "accomplishment-report",
+    "docx",
+    "google-drive"
+  ],
+  "author": "",
+  "license": "ISC",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

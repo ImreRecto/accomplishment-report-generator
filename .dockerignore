@@ -1,0 +1,24 @@
+# Dependencies and build artifacts
+**/node_modules
+**/dist
+**/npm-debug.log*
+
+# Git and editor files
+.git
+.gitignore
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# Environment and sensitive files
+**/.env
+**/.env.*
+!**/.env.example
+
+# Temporary test outputs
+**/*.docx
+!ACCOMPLISHMENT TEMPLATE.docx
+**/test_output.docx
+**/inspect_*.js
+**/test_generate.js
